@@ -39,7 +39,7 @@ def call(body) {
   handleActionRequest(client, config)
 }
 
-@NonCPS
+//@NonCPS
 def handleActionRequest(client, config) {
   def success = true
 
@@ -59,7 +59,7 @@ def handleActionRequest(client, config) {
   }
 }
 
-@NonCPS
+//@NonCPS
 def updateService(client, config) {
   def request = new UpdateServiceRequest()
     .withCluster(config.cluster)
@@ -78,14 +78,14 @@ def updateService(client, config) {
   return false
 }
 
-@NonCPS
+//@NonCPS
 def wait(client, config) {
   def waiter = client.waiters().tasksRunning()
   def desiredState = 'RUNNING'
   def timeout = 0
   def seconds = 5
 
-  Thread.sleep(seconds * 1000)  // Allow the tasks to start
+  Thread.sleep(seconds * 1000)  // ECS is eventually consistent, so give the tasks time to start
   ListTasksResult taskList = client.listTasks(new ListTasksRequest().withCluster(config.cluster).withFamily(config.taskDefinition))
   DescribeTasksRequest result = new DescribeTasksRequest().withCluster(config.cluster).withTasks(taskList.getTaskArns())
 
@@ -125,7 +125,7 @@ def wait(client, config) {
    return true
 }
 
-@NonCPS
+//@NonCPS
 def setupECSClient(region, awsAccountId = null, role = null) {
   def cb = AmazonECSClientBuilder.standard().withRegion(region)
   def creds = getCredentials(awsAccountId, region, role)
@@ -135,7 +135,7 @@ def setupECSClient(region, awsAccountId = null, role = null) {
   return cb.build()
 }
 
-@NonCPS
+//@NonCPS
 def getCredentials(awsAccountId, region, roleName) {
   def env = System.getenv()
   if(env['AWS_SESSION_TOKEN'] != null) {
@@ -156,7 +156,7 @@ def getCredentials(awsAccountId, region, roleName) {
   }
 }
 
-@NonCPS
+//@NonCPS
 def assumeRole(awsAccountId, region, roleName) {
   def roleArn = "arn:aws:iam::" + awsAccountId + ":role/" + roleName
   def roleSessionName = "sts-session-" + awsAccountId
@@ -170,3 +170,14 @@ def assumeRole(awsAccountId, region, roleName) {
             .withRoleSessionName(roleSessionName))
   return assumeRoleResult.getCredentials()
 }
+
+call (
+  action: 'update',
+  service: 'selenium-tests',
+  taskDefinition: 'selenium-tests',
+  cluster: 'ciinabox-selenium-1I02FJ862NUQT',
+  desiredCount: 1,
+  forceNewDeployment: true,
+  region: 'us-west-2',
+  role: 'ciinabox'
+)
