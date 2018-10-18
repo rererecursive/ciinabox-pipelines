@@ -6,7 +6,7 @@ ecsTask (
   taskDefinition: 'example-task-definition',
   cluster: 'example-cluster',
   count: '1',
-  startedBy: 'example-test-abc123'
+  startedBy: 'example-test-abc123',
   region: 'us-east-1',
   accountId: '12345678',
   role: 'ciinabox'
@@ -52,11 +52,7 @@ def handleActionRequest(client, config) {
       }
       // TODO: check if service exists. if it does, just wait for it.
     case 'stop':
-      if (updateService(client, config)) {
-        if (config.desiredCount > 0) {
-          success = wait(client, config)
-        }
-      }
+      stopTask(client, config)
       break
     default:
       throw new GroovyRuntimeException("The specified action '${config.action}' is not implemented.")
@@ -82,10 +78,34 @@ Cluster: ${config.cluster}
 StartedBy: ${config.startedBy}
 Task ARNs: ${result.getTasks()}
 """
+    env.TASKS = result.getTasks()    // TODO: do we have to join() this?
   } catch(AmazonECSException ex) {
     throw ex
   }
   return false
+}
+
+//@NonCPS
+def stopTask(client, config) {
+  def taskCount = env.TASKS.size()
+  def success = true
+
+  env.TASKS.eachWithIndex { task, i ->
+    def request = StopTaskRequest()
+    .withCluster(config.cluster)
+    .withTask(task.getTaskArn())
+    .withReason("Stopped by Jenkins.")
+
+    try {
+      StopTaskResult result = client.stopTask(request)
+      println """Successfully stopped ${i}/${taskCount} tasks.
+      """
+    } catch(AmazonECSException e) {
+      println "ERROR: task '${task.getTaskArn()}' failed to stop -- ${e}"
+      success = false
+    }
+  }
+  return success
 }
 
 
