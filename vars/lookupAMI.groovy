@@ -30,7 +30,7 @@ def call(body) {
   println "Looking up AMIs with config: ${config}"
   def image = lookupAMI(config)
   if(image) {
-    println "Details for image ${image.imageId}: ${image}"
+    println "Details for image '${image.name}': ${image}"
     env["SOURCE_AMI"] = image.imageId
     env["SOURCE_AMI_NAME"] = image.name
     return image.imageId
@@ -57,8 +57,8 @@ def lookupAMI(config) {
   }
 
   if(config.amiBranch) {
-    def amiBranch = config.amiBranch.replaceAll("/", "-")
-    filters << new Filter("tag:BranchName").withValues("${amiBranch}","master")
+    println "Filtering AMIs for tag 'BranchName=${config.amiBranch}'..."
+    filters << new Filter("tag:BranchName").withValues("${config.amiBranch}")
   }
 
   def imagesList = ec2.describeImages(new DescribeImagesRequest()
@@ -68,10 +68,7 @@ def lookupAMI(config) {
 
   if(imagesList.images.size() > 0) {
     def images = imagesList.images.collect()
-    println "Found ${images.size()} AMIs."
-    if(config.amiBranch) {
-      images = filterAMIBranch(images, config.amiBranch.replaceAll("/", "-"))
-    }
+    println "Found ${images.size()} AMIs: ${images.collect { it.name }.sort().reverse()}"
     image = images.get(findNewestImage(images))
     println "Found AMI '${image.name}' (${image.imageId})."
   }
@@ -93,24 +90,6 @@ def findNewestImage(images) {
     index++
   }
   return found
-}
-
-def filterAMIBranch(images, amiBranch) {
-  branchImages = []
-
-  println "Filtering AMIs for tag 'BranchName=${amiBranch}'..."
-  images.each { image ->
-    image.tags.each { tag ->
-      if(tag.key == 'BranchName' && tag.value == amiBranch) {
-        branchImages << image
-      }
-    }
-  }
-  if(branchImages.size() == 0) {
-    return images
-  } else {
-    return branchImages
-  }
 }
 
 def lookupAccountId() {
