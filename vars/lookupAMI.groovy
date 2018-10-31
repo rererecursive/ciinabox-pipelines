@@ -4,7 +4,13 @@
  Looks up an AMI to
 
  example usage
- lookupAMI region: 'ap-southeast-2',  name: 'xyz', tags: ['status':'verifed']
+ lookupAMI(
+    region: 'ap-southeast-2',     // Required
+    amiName: 'xyz',               // Required
+    amiBranch: 'master',          // Optional
+    tags: ['Status':'Verified'],  // Optional
+    owner: '12345678'             // Optional
+  )
  ************************************/
 @Grab(group='com.amazonaws', module='aws-java-sdk-ec2', version='1.11.198')
 @Grab(group='com.amazonaws', module='aws-java-sdk-sts', version='1.11.198')
@@ -21,14 +27,15 @@ def call(body) {
   if(!config['owner']) {
     config.owner = lookupAccountId()
   }
-  println "lookup config:${config}"
+  println "Looking up AMIs with config: ${config}"
   def image = lookupAMI(config)
   if(image) {
-    println "image:${image}"
-    env["SOURCE_AMI"]=image.imageId
+    println "Details for image ${image.imageId}: ${image}"
+    env["SOURCE_AMI"] = image.imageId
+    env["SOURCE_AMI_NAME"] = image.name
     return image.imageId
   } else {
-    println "ami not found for ${config}"
+    println "ERROR: no AMI was found for config: ${config}"
     return null
   }
 }
@@ -37,10 +44,12 @@ def lookupAMI(config) {
   def ec2 = AmazonEC2ClientBuilder.standard()
     .withRegion(config.region)
     .build()
-
+  def image = null
   def filters = []
+
   filters << new Filter().withName('name').withValues(config.amiName)
   filters << new Filter().withName('root-device-type').withValues('ebs')
+
   if(config['tags']) {
     config.tags.each { key, value ->
       filters << new Filter("tag:${key}").withValues("${value}")
@@ -56,21 +65,25 @@ def lookupAMI(config) {
     .withOwners([config.owner])
     .withFilters(filters)
   )
-  if(imagesList.images.size () > 0) {
+
+  if(imagesList.images.size() > 0) {
     def images = imagesList.images.collect()
-    println "image:${images}"
+    println "Found ${images.size()} AMIs."
     if(config.amiBranch) {
       images = filterAMIBranch(images, config.amiBranch.replaceAll("/", "-"))
     }
-    return images.get(findNewestImage(images))
+    image = images.get(findNewestImage(images))
+    println "Found AMI '${image.name}' (${image.imageId})."
   }
-  return null
+  return image
 }
 
 def findNewestImage(images) {
   def index = 0
   def newest = Date.parse("yyyy-MM-dd", "2000-01-01")
   def found = 0
+
+  println "Filtering AMIs for the newest image..."
   images.each { image ->
     imageDate = Date.parse("yyyy-MM-dd'T'HH:mm:ss", image.creationDate)
     if(imageDate >= newest) {
@@ -84,6 +97,8 @@ def findNewestImage(images) {
 
 def filterAMIBranch(images, amiBranch) {
   branchImages = []
+
+  println "Filtering AMIs for tag 'BranchName=${amiBranch}'..."
   images.each { image ->
     image.tags.each { tag ->
       if(tag.key == 'BranchName' && tag.value == amiBranch) {
