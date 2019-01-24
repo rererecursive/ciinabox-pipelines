@@ -94,10 +94,7 @@ def configurePackerTemplate(config) {
   }
 
   // Configure the source AMI.
-  if (config.sourceAMI.id) {
-    config.packerConfig['source_ami'] = config.sourceAMI.id
-  }
-  else {
+  if (config.packerConfig['source_ami'] == null) {
     // Rewrite the template to make Packer lookup an AMI.
     sh """#!/bin/bash
       tee filter.json <<ECSInstanceProfile
@@ -116,11 +113,9 @@ def configurePackerTemplate(config) {
 
       EOF
     """
-    config.packerConfig['source_ami_name'] = config.sourceAMI.name
-    config.packerConfig['source_ami_owner'] = config.sourceAMI.owner
 
-    sh "jq '.builds[0] += `cat filter.json`' ${config.template.path} > tmp" // Add the filter to the template.
-    sh "jq 'del(.builds[0].source_ami)' tmp > ${config.template.path}"      // Remove the AMI ID parameter.
+    sh "jq '.builds[0] += `cat filter.json`' ${config.template.path} > tmp"   // Add the filter to the template.
+    sh "jq 'del(.builds[0].source_ami)' tmp > ${config.template.path}"        // Remove the AMI ID parameter.
   }
 }
 
