@@ -1,107 +1,139 @@
 /***********************************
- bakeAMI DSL
 
- Bakes an AMI using https://github.com/base2Services/ciinabox-bakery
+bakeAMI(
+  app: 'bastion',
+  sourceAMI: [
+    name: 'amzn-ami-hvm-2018.03.*',   # Or 'id'
+    id: 'ami-12345678',               # Or 'name'
+    owner: '12345678'
+  ],
+  region: '',
+  shareAmiWith: ['', ''],
+  withCookbooks: true,
+  chefRunList: '',
+  variables: [
 
- example usage
- bakeAMI(region: env.REGION,
-   role: 'MyServer',
-   baseAMI: 'amzn-ami-hvm-2017.03.*',
-   bakeChefRunList: 'recipe[mycookbook::default]',
-   owner: env.BASE_AMI_OWNER,
-   client: env.CLIENT,
-   shareAmiWith: env.SHARE_AMI_WITH,
-   packerTemplate: env.PACKER_TEMPLATE,
-   amiBuildNumber: env.AMI_BUILD_NUMBER,
-   sshUsername: env.SSH_USERNAME
- )
- ************************************/
+  ],
+  template: [
+    owner: 'base2',
+    path: 'templates/amazon-linux/file.json'
+  ],
+  debug: true
+)
+
+**********/
 
 def call(body) {
   def config = body
 
-  def bakeEnv = []
-  bakeEnv << "REGION=${config.get('region')}"
-  bakeEnv << "PACKER_INSTANCE_TYPE=${config.get('bakeAMIType', 'm4.large')}"
-  bakeEnv << "CHEF_RUN_LIST=${config.get('bakeChefRunList')}"
-  bakeEnv << "PACKER_TEMPLATE=${config.get('packerTemplate', 'packer/amz_ebs_ami.json')}"
-  bakeEnv << "PACKER_DEFAULT_PARAMS=${config.get('packerDefaultParams', 'base_params.json')}"
-  bakeEnv << "COOKBOOK_TAR=${config.get('bakeCookbookPackage', 'cookbooks.tar.gz')}"
-  bakeEnv << "ROLE=${config.get('role')}"
-  bakeEnv << "CLIENT=${config.get('client')}"
-  bakeEnv << "CIINABOX_NAME=${config.get('ciinabox', 'ciinabox')}"
-  bakeEnv << "AMI_USERS=${config.get('shareAmiWith')}"
-  bakeEnv << "BAKE_VOLUME_SIZE=${config.get('bakeVolumeSize', '')}"
-  bakeEnv << "DEVICE_NAME=${config.get('deviceName', '')}"
-  bakeEnv << "AMI_BUILD_NUMBER=${config.get('amiBuildNumber', env.BUILD_NUMBER)}"
-  if (fileExists('.git/config')) {
-    shortCommit = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
-  } else if(env.GIT_COMMIT != null) {
-    shortCommit = env.GIT_COMMIT.substring(0,7)
+  configureUserVariables(config)
+  configureStackVariables(config)
+  configurePackerTemplate(config)
+  confgureCookbooks()
+  bake()
+
+}
+
+// Prepare the user template variables.
+def configureUserVariables(config) {
+  def packerConfig = [
+    'app':                config.app,
+    'ami_users':          config.shareAmiWith,
+    'build_no':           env.BUILD_NUMBER,
+    'chef_repo_branch':   env.BRANCH_NAME,
+    'chef_repo_commit':   env.GIT_COMMIT.substring(0, 7),
+    'chef_run_list':      config.chefRunList,
+    'packer_template':    config.template.name,
+    'region':             config.region,
+    'source_ami':         config.sourceAMI.id,
+    'source_ami_name':    config.sourceAMI.name,
+    'source_ami_owner':   config.sourceAMI.owner
+  ]
+
+  if (config.debug = true) {
+    config.debug = '-debug'
   } else {
-    shortCommit = 'unknown'
+    config.debug = ''
   }
-  bakeEnv << "GIT_COMMIT=${shortCommit}"
-  bakeEnv << "SSH_USERNAME=${config.get('sshUsername', '')}"
-  config.amiName = config.get('baseAMI')
-  config.amiBranch = config.get('baseAMIBranch')
 
-  // Windows chef env vars
-  bakeEnv << "CHEF_PATH=${config.chefPath}"
-  bakeEnv << "SOURCE_BUCKET=${config.sourceBucket}"
-  bakeEnv << "CB_BUILD_NO=${config.cookbookVersion}"
-  bakeEnv << "BUCKET_REGION=${config.bucketRegion}"
-  def skipCookbookUpload = config.get('skipCookbookUpload',false)
+  config.packerConfig = packerConfig
+}
 
-  def role = config.get('role').toUpperCase()
+// Get the VPC configuration from the deployed stack.
+def configureStackVariables(config) {
+  sh """#!/bin/bash
+    eval `aws cloudformation describe-stacks --stack-name ciinabox --query 'Stacks[*].Outputs[*].{Key:OutputKey, Value:OutputValue}' --region ${config.region} --output text | tr -s '\t' | tr '\t' '='`
+    tee vpc.json <<EOF
 
-  node {
-    println "bake config:${config}"
-    deleteDir()
-    git(url: 'https://github.com/base2Services/ciinabox-bakery.git', branch: 'master')
-    def sourceAMI = lookupAMI config
-    def branchName = env.BRANCH_NAME.replaceAll("/", "-")
-    bakeEnv << "SOURCE_AMI=${sourceAMI}"
-    bakeEnv << "BRANCH=${branchName}"
-    withEnv(bakeEnv) {
-      sh './configure $CIINABOX_NAME $REGION $AMI_USERS'
-      
-      if(skipCookbookUpload) {
-        sh 'mkdir -p cookbooks'
-      } else {
-        unstash 'cookbook'
-        sh 'tar xvfz cookbooks.tar.gz'
-      }
+{
+  "vpc_id": "${VPCId}",
+  "subnet_id": "${ECSPrivateSubnetA}",
+  "security_group": "${SecurityGroup}",
+  "packer_role": "${ECSRole}",
+  "packer_instance_profile": "${ECSInstanceProfile}",
+}
 
-      sh '''
-      mkdir -p data_bags
-      mkdir -p environments
-      mkdir -p encrypted_data_bag_secret
-      ls -al
-      ls -al cookbooks
-      '''
-      sh '''#!/bin/bash
-      AMI_BUILD_ID=${BRANCH}-${AMI_BUILD_NUMBER}
-      echo "==================================================="
-      echo "Baking AMI: ${ROLE}"
-      echo "AMI Build NO: ${AMI_BUILD_ID}"
-      echo "==================================================="
-      ./bakery $CLIENT $ROLE $PACKER_TEMPLATE $PACKER_DEFAULT_PARAMS $AMI_BUILD_ID $SOURCE_AMI $AMI_BUILD_ID $GIT_COMMIT $CHEF_RUN_LIST $PACKER_INSTANCE_TYPE $BAKE_VOLUME_SIZE
-      if [ $? != 0 ]; then
-        echo "ERROR: Packer Baking failed"
-        exit 1
-      fi
-      echo "==================================================="
-      echo "completed baking AMI for : ${ROLE}"
-      echo "AMI Build NO: ${AMI_BUILD_ID}"
-      echo "==================================================="
-      '''
-      bakedAMI = shellOut('''#!/bin/bash
-      BAKED_AMI=$(grep 'ami:' ${ROLE}-ami-*.yml | awk -F ':' {'print $2'})
-      echo $BAKED_AMI
-      ''')
-      env["${role}_BAKED_AMI"]=bakedAMI
-      println "${role} baked AMI:" + env["${role}_BAKED_AMI"]
+    EOF
+  """
+}
+
+// Fetch the template.
+def configurePackerTemplate(config) {
+  if (config.template.owner == 'base2') {
+    dir('base2') {
+      git(branch: 'master', url: 'https://github.com/rererecursive/ciinabox-bakery.git')
     }
+    config.template.path = 'base2/' + config.template.path
   }
+
+  // Configure the source AMI.
+  if (config.sourceAMI.id) {
+    config.packerConfig['source_ami'] = config.sourceAMI.id
+  }
+  else {
+    // Rewrite the template to make Packer lookup an AMI.
+    sh """#!/bin/bash
+      tee filter.json <<EOF
+
+{
+  "source_ami_filter": {
+    "filters": {
+      "virtualization-type": "hvm",
+      "name": "{{ user `source_ami_name` }}",
+      "root-device-type": "ebs"
+    },
+    "owners": ["{{ user `source_ami_owner` }}"],
+    "most_recent": true
+  }
+}
+
+      EOF
+    """
+
+    sh "jq '.builds[0] += `cat filter.json`' ${config.template.path}" // Add the filter to the template.
+    sh "jq 'del(.builds[0].source_ami)' ${config.template.path}"      // Remove the AMI ID parameter.
+  }
+}
+
+// Configure Chef cookbooks. They may be stashed from a previous pipeline step.
+def configureCookbooks(config) {
+  if (config.skipCookbooks) {
+    sh "mkdir -p cookbooks"
+  } else {
+    unstash 'cookbook'
+    sh 'tar xvfz cookbooks.tar.gz'
+  }
+}
+
+// Build the AMI.
+def bake(config) {
+  writeJSON(file: 'user.json', json: config.packerConfig, pretty: 2)
+  sh "jq -s add user.json vpc.json > variables.json"
+
+  sh "cat variables.json"
+  sh "cat ${config.template.path}"
+
+  sh "/opt/packer/packer version"
+  sh "/opt/packer/packer validate -var-file variables.json ${config.template.path}"
+  sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.template.path} ${config.debug}"
 }
