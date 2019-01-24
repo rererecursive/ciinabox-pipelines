@@ -92,31 +92,6 @@ def configurePackerTemplate(config) {
     }
     config.template.path = 'base2/' + config.template.path
   }
-
-  // Configure the source AMI.
-  if (config.packerConfig['source_ami'] == null) {
-    // Rewrite the template to make Packer lookup an AMI.
-    sh """#!/bin/bash
-      tee filter.json <<ECSInstanceProfile
-
-{
-  "source_ami_filter": {
-    "filters": {
-      "virtualization-type": "hvm",
-      "name": "{{ user `source_ami_name` }}",
-      "root-device-type": "ebs"
-    },
-    "owners": ["{{ user `source_ami_owner` }}"],
-    "most_recent": true
-  }
-}
-
-      EOF
-    """
-
-    sh "jq '.builds[0] += `cat filter.json`' ${config.template.path} > tmp"   // Add the filter to the template.
-    sh "jq 'del(.builds[0].source_ami)' tmp > ${config.template.path}"        // Remove the AMI ID parameter.
-  }
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
