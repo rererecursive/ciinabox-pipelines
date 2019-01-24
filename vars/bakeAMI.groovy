@@ -11,7 +11,7 @@ bakeAMI(
   shareAmiWith: ['', ''],
   withCookbooks: true,
   chefRunList: '',
-  variables: [
+  customVariables: [
 
   ],
   template: [
@@ -56,6 +56,10 @@ def configureUserVariables(config) {
     config.debug = ''
   }
 
+  if (config.customVariables) {
+    config.packerConfig = config.packerConfig + config.customVariables
+  }
+
   config.packerConfig = packerConfig
 }
 
@@ -93,7 +97,7 @@ def configurePackerTemplate(config) {
   else {
     // Rewrite the template to make Packer lookup an AMI.
     sh """#!/bin/bash
-      tee filter.json <<EOF
+      tee filter.json <<ECSInstanceProfile
 
 {
   "source_ami_filter": {
