@@ -5,7 +5,8 @@ bakeAMI(
   role: 'MyServer',
   baseAMI: 'amzn-ami-hvm-2017.03.*',
   owner: env.BASE_AMI_OWNER,          # Or below
-  baseAmiId: 'ami-123456789',         # Or above
+  baseAMIId: 'ami-123456789',         # Or above
+  bakeAMIType: 'm4.large',
   bakeChefRunList: 'recipe[mycookbook::default]',
   client: env.CLIENT,
   shareAmiWith: env.SHARE_AMI_WITH,
@@ -37,12 +38,14 @@ def configureUserVariables(config) {
     'chef_repo_commit':   env.GIT_COMMIT.substring(0, 7),
     'chef_run_list':      config.bakeChefRunList,
     'client':             config.client,
+    'instance_type':      config.bakeAMIType,
     'packer_template':    config.packerTemplate,
     'region':             config.region,
     'role':               config.role,
-    'source_ami':         config.baseAmiId,
+    'source_ami':         config.baseAMIId,
     'source_ami_name':    config.baseAMI,
-    'source_ami_owner':   config.owner
+    'source_ami_owner':   config.owner,
+    'ssh_username':       config.sshUsername
   ]
 
   if (config.debug = true) {
@@ -86,12 +89,17 @@ def configureStackVariables(config) {
 // Fetch the template.
 @NonCPS
 def configurePackerTemplate(config) {
-  if (config.template.owner == null || config.template.owner == 'base2') {
-    dir('base2') {
-      git(branch: 'master', url: 'https://github.com/rererecursive/ciinabox-bakery.git')
-    }
-    config.template.path = 'base2/' + config.template.path
+  def templateRepo = 'https://github.com/rererecursive/ciinabox-bakery'
+
+  if (config.packerTemplateRepo) {
+    templateRepo = config.templateRepo
   }
+
+  dir('templates') {
+    git(branch: 'master', url: templateRepo)
+  }
+
+  config.packerTemplate = 'templates/' + config.packerTemplate
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
@@ -110,11 +118,12 @@ def configureCookbooks(config) {
 def bake(config) {
   writeJSON(file: 'user.json', json: config.packerConfig, pretty: 2)
   sh "jq -s add user.json vpc.json > variables.json"
+  sh "sed -i 's/null/\"\"/g' variables.json"
 
   sh "cat variables.json"
   sh "cat ${config.template.path}"
 
   sh "/opt/packer/packer version"
-  sh "/opt/packer/packer validate -var-file variables.json ${config.template.path}"
-  sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.template.path} ${config.debug}"
+  sh "/opt/packer/packer validate -var-file variables.json ${config.packerTemplateRepo}"
+  sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplateRepo} ${config.debug}"
 }
