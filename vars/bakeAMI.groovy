@@ -35,6 +35,7 @@ def call(body) {
 }
 
 // Prepare the user template variables.
+@NonCPS
 def configureUserVariables(config) {
   def packerConfig = [
     'app':                config.app,
@@ -57,13 +58,14 @@ def configureUserVariables(config) {
   }
 
   if (config.customVariables) {
-    config.packerConfig = config.packerConfig + config.customVariables
+    packerConfig = packerConfig + config.customVariables
   }
 
   config.packerConfig = packerConfig
 }
 
 // Get the VPC configuration from the deployed stack.
+@NonCPS
 def configureStackVariables(config) {
   sh """#!/bin/bash
     eval `aws cloudformation describe-stacks --stack-name ciinabox --query 'Stacks[*].Outputs[*].{Key:OutputKey, Value:OutputValue}' --region ${config.region} --output text | tr -s '\t' | tr '\t' '='`
@@ -82,6 +84,7 @@ def configureStackVariables(config) {
 }
 
 // Fetch the template.
+@NonCPS
 def configurePackerTemplate(config) {
   if (config.template.owner == 'base2') {
     dir('base2') {
@@ -122,6 +125,7 @@ def configurePackerTemplate(config) {
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
+@NonCPS
 def configureCookbooks(config) {
   if (config.skipCookbooks) {
     sh "mkdir -p cookbooks"
@@ -132,6 +136,7 @@ def configureCookbooks(config) {
 }
 
 // Build the AMI.
+@NonCPS
 def bake(config) {
   writeJSON(file: 'user.json', json: config.packerConfig, pretty: 2)
   sh "jq -s add user.json vpc.json > variables.json"
