@@ -9,7 +9,7 @@ bakeAMI(
   ],
   region: '',
   shareAmiWith: ['', ''],
-  withCookbooks: true,
+  skipCookbooks: true,
   chefRunList: '',
   customVariables: [
 
@@ -29,8 +29,8 @@ def call(body) {
   configureUserVariables(config)
   configureStackVariables(config)
   configurePackerTemplate(config)
-  confgureCookbooks()
-  bake()
+  confgureCookbooks(config)
+  bake(config)
 
 }
 
