@@ -1,27 +1,21 @@
 /***********************************
 
 bakeAMI(
-  app: 'bastion',
-  sourceAMI: [
-    name: 'amzn-ami-hvm-2018.03.*',   # Or 'id'
-    id: 'ami-12345678',               # Or 'name'
-    owner: '12345678'
-  ],
-  region: '',
-  shareAmiWith: ['', ''],
-  skipCookbooks: true,
-  chefRunList: '',
-  customVariables: [
-
-  ],
-  template: [
-    owner: 'base2',
-    path: 'templates/amazon-linux/file.json'
-  ],
+  region: env.REGION,
+  role: 'MyServer',
+  baseAMI: 'amzn-ami-hvm-2017.03.*',
+  owner: env.BASE_AMI_OWNER,          # Or below
+  baseAmiId: 'ami-123456789',         # Or above
+  bakeChefRunList: 'recipe[mycookbook::default]',
+  client: env.CLIENT,
+  shareAmiWith: env.SHARE_AMI_WITH,
+  packerTemplate: 'packer/amz_ebs_ami.json'
+  amiBuildNumber: env.AMI_BUILD_NUMBER,
+  sshUsername: env.SSH_USERNAME,
   debug: true
 )
 
-**********/
+***********************************/
 
 def call(body) {
   def config = body
@@ -38,23 +32,29 @@ def call(body) {
 @NonCPS
 def configureUserVariables(config) {
   def packerConfig = [
-    'app':                config.app,
     'ami_users':          config.shareAmiWith,
-    'build_no':           env.BUILD_NUMBER,
     'chef_repo_branch':   env.BRANCH_NAME,
     'chef_repo_commit':   env.GIT_COMMIT.substring(0, 7),
-    'chef_run_list':      config.chefRunList,
-    'packer_template':    config.template.name,
+    'chef_run_list':      config.bakeChefRunList,
+    'client':             config.client,
+    'packer_template':    config.packerTemplate,
     'region':             config.region,
-    'source_ami':         config.sourceAMI.id,
-    'source_ami_name':    config.sourceAMI.name,
-    'source_ami_owner':   config.sourceAMI.owner
+    'role':               config.role,
+    'source_ami':         config.baseAmiId,
+    'source_ami_name':    config.baseAMI,
+    'source_ami_owner':   config.owner
   ]
 
   if (config.debug = true) {
     config.debug = '-debug'
   } else {
     config.debug = ''
+  }
+
+  if (config.amiBuildNumber) {
+    packerConfig['build_no'] = config.amiBuildNumber
+  } else {
+    packerConfig['build_no'] = env.BUILD_NUMBER
   }
 
   if (config.customVariables) {
@@ -86,7 +86,7 @@ def configureStackVariables(config) {
 // Fetch the template.
 @NonCPS
 def configurePackerTemplate(config) {
-  if (config.template.owner == 'base2') {
+  if (config.template.owner == null || config.template.owner == 'base2') {
     dir('base2') {
       git(branch: 'master', url: 'https://github.com/rererecursive/ciinabox-bakery.git')
     }
