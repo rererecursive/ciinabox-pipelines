@@ -48,7 +48,7 @@ def configureUserVariables(config) {
     'ssh_username':       config.sshUsername
   ]
 
-  if (config.debug = true) {
+  if (config.debug == true) {
     config.debug = '-debug'
   } else {
     config.debug = ''
@@ -79,7 +79,7 @@ def configureStackVariables(config) {
   "subnet_id": "${ECSPrivateSubnetA}",
   "security_group": "${SecurityGroup}",
   "packer_role": "${ECSRole}",
-  "packer_instance_profile": "${ECSInstanceProfile}",
+  "packer_instance_profile": "${ECSInstanceProfile}"
 }
 
     EOF
