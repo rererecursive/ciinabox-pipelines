@@ -18,13 +18,15 @@ bakeAMI(
 
 ***********************************/
 
+import groovy.json.JsonOutput
+
 def call(body) {
   def config = body
 
   configureUserVariables(config)
   configureStackVariables(config)
   configurePackerTemplate(config)
-  confgureCookbooks(config)
+  configureCookbooks(config)
   bake(config)
 
 }
@@ -68,11 +70,16 @@ def configureUserVariables(config) {
 }
 
 // Get the VPC configuration from the deployed stack.
-@NonCPS
+//@NonCPS
 def configureStackVariables(config) {
-  sh """#!/bin/bash
-    eval `aws cloudformation describe-stacks --stack-name ciinabox --query 'Stacks[*].Outputs[*].{Key:OutputKey, Value:OutputValue}' --region ${config.region} --output text | tr -s '\t' | tr '\t' '='`
-    tee vpc.json <<EOF
+  deleteDir()
+  withEnv(["REGION=${config.region}", "STACK=ciinabox"]) {
+    println "Fetching variables from CloudFormation stack: ${env.STACK} ..."
+
+    sh '''#!/bin/bash
+      eval `aws cloudformation describe-stacks --stack-name ${STACK} --query 'Stacks[*].Outputs[*].{Key:OutputKey, Value:OutputValue}' --region ${REGION} --output text | tr -s '\t' | tr '\t' '='`
+      echo "\nWriting to: vpc.json"
+      tee vpc.json <<EOF
 
 {
   "vpc_id": "${VPCId}",
@@ -82,29 +89,33 @@ def configureStackVariables(config) {
   "packer_instance_profile": "${ECSInstanceProfile}"
 }
 
-    EOF
-  """
+EOF
+    '''
+  }
 }
 
 // Fetch the template.
-@NonCPS
 def configurePackerTemplate(config) {
   def templateRepo = 'https://github.com/rererecursive/ciinabox-bakery'
 
   if (config.packerTemplateRepo) {
-    templateRepo = config.templateRepo
+    templateRepo = config.packerTemplateRepo
   }
 
+  println "Cloning git repository: ${templateRepo} ..."
+  sh 'mkdir -p templates'
   dir('templates') {
-    git(branch: 'master', url: templateRepo)
+    git(branch: 'v2', url: templateRepo)
   }
 
   config.packerTemplate = 'templates/' + config.packerTemplate
+  config.packerConfig['packer_template'] = config.packerTemplate
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
-@NonCPS
 def configureCookbooks(config) {
+  sh 'mkdir -p data_bags environments encrypted_data_bag_secret'
+
   if (config.skipCookbooks) {
     sh "mkdir -p cookbooks"
   } else {
@@ -114,16 +125,20 @@ def configureCookbooks(config) {
 }
 
 // Build the AMI.
-@NonCPS
 def bake(config) {
-  writeJSON(file: 'user.json', json: config.packerConfig, pretty: 2)
-  sh "jq -s add user.json vpc.json > variables.json"
-  sh "sed -i 's/null/\"\"/g' variables.json"
+  echo "\nWriting to user.json\n"
+  writeFile(file: 'user.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(config.packerConfig)))
+
+  // Remove any empty values from the variables file and default to the values in the template.
+  sh "cat user.json"
+  echo "\nRemoving empty values from variables\n"
+  sh "jq -s add user.json vpc.json > temp.json"
+  sh "jq 'with_entries( select( .value != null and .value != \"\" ) )' temp.json > variables.json"
 
   sh "cat variables.json"
-  sh "cat ${config.template.path}"
+  sh "cat ${config.packerTemplate}"
 
   sh "/opt/packer/packer version"
-  sh "/opt/packer/packer validate -var-file variables.json ${config.packerTemplateRepo}"
-  sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplateRepo} ${config.debug}"
+  sh "/opt/packer/packer validate -var-file=variables.json ${config.packerTemplate}"
+  sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplate} ${config.debug}"
 }
