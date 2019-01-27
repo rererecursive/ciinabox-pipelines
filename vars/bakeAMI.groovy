@@ -141,4 +141,7 @@ def bake(config) {
   sh "/opt/packer/packer version"
   sh "/opt/packer/packer validate -var-file=variables.json ${config.packerTemplate}"
   sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplate} ${config.debug}"
+
+  echo "\nProduced artifacts:\n"
+  sh "cat builds.json"
 }
