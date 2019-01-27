@@ -143,5 +143,5 @@ def bake(config) {
   sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplate} ${config.debug}"
 
   echo "\nProduced artifacts:\n"
-  sh "cat builds.json"
+  sh "cat builds.json"  // Produced by Packer
 }
