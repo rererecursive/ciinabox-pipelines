@@ -5,6 +5,7 @@ buildAMI(
   bucketRegion: 'ap-southeast-2',
   chefPath: 'chef',
   chefRunList: 'recipe[mycookbook::default]',
+  client: 'base2',
   cookbookVersion: '',
   copyAMIToRegions: ['us-west-2', 'us-east-2'],
   customVariables: [
@@ -21,11 +22,11 @@ buildAMI(
   platform: 'windows',
   region: 'ap-southeast-2',
   role: 'bastion',
-  shareAmiWith: ['12345678', '87654321'],
+  shareAMIWith: ['12345678', '87654321'],
   skipCookbooks: true,
-  sourceAMIId: 'ami-123456789',         # Or above
+  sourceAMIId: 'ami-123456789',           # Or below; specify name and owner
   sourceAMIName: 'amzn-ami-hvm-2017.03.*',
-  sourceAMIOwner: env.BASE_AMI_OWNER,          # Or below
+  sourceAMIOwner: env.BASE_AMI_OWNER,
   sourceBucket: 'source.tools.example.com',
   sshUsername: env.SSH_USERNAME
 )
@@ -49,8 +50,8 @@ def call(body) {
 @NonCPS
 def configureUserVariables(config) {
   def packerConfig = [
-    'ami_users':          config.shareAmiWith,
-    'ami_regions':        config.copyToRegions,
+    'ami_users':          config.get('shareAMIWith', '').join(','),
+    'ami_regions':        config.get('copyAMIToRegions', '').join(','),
     'bake_volume_size':   config.bakeVolumeSize,
     'bucket_region':      config.bucketRegion,
     'build_no':           env.BUILD_NUMBER,
@@ -61,7 +62,6 @@ def configureUserVariables(config) {
     'client':             config.client,
     'cookbook_version':   config.cookbookVersion,
     'instance_type':      config.instanceType,
-    'packer_template':    config.packerTemplate,
     'platform':           config.platform,
     'region':             config.region,
     'role':               config.role,
@@ -116,20 +116,21 @@ EOF
 
 // Fetch the template.
 def configurePackerTemplate(config) {
-  def templateRepo = 'https://github.com/rererecursive/packer-templates'
-
-  if (config.packerTemplateRepo) {
-    templateRepo = config.packerTemplateRepo
+  if (config.packerTemplate.getClass() == String) {
+    // Convert it to a map to make future calculations simpler
+    config.packerTemplate = ['name': config.packerTemplate]
   }
 
-  println "Cloning git repository: ${templateRepo} ..."
+  def repo = config.packerTemplate.get('repo', 'https://github.com/rererecursive/packer-templates')
+  def branch = config.packerTemplate.get('branch', 'master')
+
+  println "Cloning git repository: ${repo} with branch ${branch} ..."
   sh 'mkdir -p templates'
   dir('templates') {
-    git(branch: 'master', url: templateRepo)
+    git(branch: branch, url: repo)
   }
 
   config.packerTemplate = 'templates/' + config.packerTemplate
-  config.packerConfig['packer_template'] = config.packerTemplate
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
