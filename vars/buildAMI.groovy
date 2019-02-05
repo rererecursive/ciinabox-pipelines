@@ -23,6 +23,7 @@ buildAMI(
   region: 'ap-southeast-2',
   role: 'bastion',
   shareAMIWith: ['12345678', '87654321'],
+  shutdownTimeout: '60 minutes',
   skipCookbooks: true,
   sourceAMIId: 'ami-123456789',           # Or below; specify name and owner
   sourceAMIName: 'amzn-ami-hvm-2017.03.*',
@@ -42,12 +43,12 @@ def call(body) {
   configureStackVariables(config)
   configurePackerTemplate(config)
   configureCookbooks(config)
+  configureShutdown()
   bake(config)
 
 }
 
 // Prepare the template's user variables.
-@NonCPS
 def configureUserVariables(config) {
   def packerConfig = [
     'ami_users':          config.get('shareAMIWith', '').join(','),
@@ -86,11 +87,10 @@ def configureUserVariables(config) {
     packerConfig = packerConfig + config.customVariables
   }
 
-  config.packerConfig = packerConfig
+  config.userConfig = packerConfig
 }
 
 // Get the VPC configuration from the deployed stack.
-//@NonCPS
 def configureStackVariables(config) {
   deleteDir()
   withEnv(["REGION=${config.region}", "STACK=ciinabox"]) {
@@ -145,10 +145,23 @@ def configureCookbooks(config) {
   }
 }
 
+def configureShutdown(config) {
+  if (config.shutdownTimeout) {
+    def timeout, type = config.shutdownTimeout.split()
+
+    if (type.startsWith('hour')) {
+      timeout = timeout.toInteger() * 60
+    }
+
+    echo "Set the shutdown timeout for Packer to ${config.shutdownTimeout}."
+    config.userConfig['shutdown_timeout'] = timeout.toString()
+  }
+}
+
 // Build the AMI.
 def bake(config) {
   echo "\nWriting to user.json\n"
-  writeFile(file: 'user.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(config.packerConfig)))
+  writeFile(file: 'user.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(config.userConfig)))
 
   // Remove any empty values from the variables file and default to the values in the template.
   sh "cat user.json"
