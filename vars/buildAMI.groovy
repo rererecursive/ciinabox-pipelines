@@ -43,7 +43,7 @@ def call(body) {
   configureStackVariables(config)
   configurePackerTemplate(config)
   configureCookbooks(config)
-  configureShutdown()
+  configureShutdown(config)
   bake(config)
 
 }
@@ -117,21 +117,27 @@ EOF
 
 // Fetch the template.
 def configurePackerTemplate(config) {
-  if (config.packerTemplate.getClass() == String) {
-    // Convert it to a map to make future calculations simpler
-    config.packerTemplate = ['name': config.packerTemplate]
-  }
+  def repo = 'https://github.com/rererecursive/packer-templates'
+  def branch = 'master'
+  def template
 
-  def repo = config.packerTemplate.get('repo', 'https://github.com/rererecursive/packer-templates')
-  def branch = config.packerTemplate.get('branch', 'master')
+  if (config.packerTemplate.getClass() == String) {
+    template = config.packerTemplate
+  }
+  else {
+    template = config.packerTemplate.get('name')
+    repo = config.packerTemplate.get('repo', repo)
+    branch = config.packerTemplate.get('branch', branch)
+  }
 
   println "Cloning git repository: ${repo} with branch ${branch} ..."
-  sh 'mkdir -p templates'
-  dir('templates') {
+  //sh 'mkdir -p templates'
+  //dir('templates') {
     git(branch: branch, url: repo)
-  }
+  //}
 
-  config.packerTemplate = 'templates/' + config.packerTemplate
+  //config.packerTemplate = 'templates/' + template
+  config.packerTemplate = template
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
@@ -142,13 +148,13 @@ def configureCookbooks(config) {
     sh "mkdir -p cookbooks"
   } else {
     unstash 'cookbook'
-    sh 'tar xvfz cookbooks.tar.gz'
+    sh 'tar xfz cookbooks.tar.gz'
   }
 }
 
 def configureShutdown(config) {
   if (config.shutdownTimeout) {
-    def timeout, type = config.shutdownTimeout.split()
+    def (timeout, type) = config.shutdownTimeout.split()
 
     if (type.startsWith('hour')) {
       timeout = timeout.toInteger() * 60
@@ -166,7 +172,7 @@ def bake(config) {
 
   // Remove any empty values from the variables file and default to the values in the template.
   sh "cat user.json"
-  println "\nRemoving empty values from variables\n"
+  println "\nRemoving variables that have empty values...\n"
   sh "jq -s add user.json vpc.json > temp.json"
   sh "jq 'with_entries( select( .value != null and .value != \"\" ) )' temp.json > variables.json"
 
@@ -174,7 +180,7 @@ def bake(config) {
 
   sh "/opt/packer/packer version"
   sh "/opt/packer/packer validate -var-file=variables.json ${config.packerTemplate}"
-  sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplate} ${config.debug}"
+  sh "/opt/packer/packer build -machine-readable ${config.debug} -var-file=variables.json ${config.packerTemplate}"
 
   println "\nProduced artifacts:\n"
   sh "cat builds.json"  // Produced by Packer
