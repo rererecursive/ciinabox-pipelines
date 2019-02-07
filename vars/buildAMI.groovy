@@ -96,9 +96,10 @@ def configureStackVariables(config) {
   withEnv(["REGION=${config.region}", "STACK=ciinabox"]) {
     println "Fetching variables from CloudFormation stack: ${env.STACK} ..."
 
+    println "\nWriting to: vpc.json\n"
+
     sh '''#!/bin/bash
       eval `aws cloudformation describe-stacks --stack-name ${STACK} --query 'Stacks[*].Outputs[*].{Key:OutputKey, Value:OutputValue}' --region ${REGION} --output text | tr -s '\t' | tr '\t' '='`
-      echo "\nWriting to: vpc.json"
       tee vpc.json <<EOF
 
 {
@@ -153,19 +154,19 @@ def configureShutdown(config) {
       timeout = timeout.toInteger() * 60
     }
 
-    echo "Set the shutdown timeout for Packer to ${config.shutdownTimeout}."
+    println "Set the shutdown timeout for Packer to ${config.shutdownTimeout}."
     config.userConfig['shutdown_timeout'] = timeout.toString()
   }
 }
 
 // Build the AMI.
 def bake(config) {
-  echo "\nWriting to user.json\n"
+  println "\nWriting to user.json\n"
   writeFile(file: 'user.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(config.userConfig)))
 
   // Remove any empty values from the variables file and default to the values in the template.
   sh "cat user.json"
-  echo "\nRemoving empty values from variables\n"
+  println "\nRemoving empty values from variables\n"
   sh "jq -s add user.json vpc.json > temp.json"
   sh "jq 'with_entries( select( .value != null and .value != \"\" ) )' temp.json > variables.json"
 
@@ -175,6 +176,6 @@ def bake(config) {
   sh "/opt/packer/packer validate -var-file=variables.json ${config.packerTemplate}"
   sh "/opt/packer/packer build -machine-readable -var-file=variables.json ${config.packerTemplate} ${config.debug}"
 
-  echo "\nProduced artifacts:\n"
+  println "\nProduced artifacts:\n"
   sh "cat builds.json"  // Produced by Packer
 }
