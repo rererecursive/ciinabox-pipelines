@@ -39,6 +39,7 @@ import groovy.json.JsonOutput
 def call(body) {
   def config = body
 
+  upgradePacker()     // TODO: TEMP!
   configureUserVariables(config)
   configureStackVariables(config)
   configurePackerTemplate(config)
@@ -163,6 +164,11 @@ def configureShutdown(config) {
     println "Set the shutdown timeout for Packer to ${config.shutdownTimeout}."
     config.userConfig['shutdown_timeout'] = timeout.toString()
   }
+}
+
+// Upgrade Packer to 1.3.4 to take advantage of newer features (e.g. access to source AMI tags)
+def upgradePacker() {
+  sh "wget -q https://releases.hashicorp.com/packer/1.3.4/packer_1.3.4_linux_amd64.zip && unzip -o packer_1.3.4_linux_amd64.zip && sudo mv packer /opt/packer/packer && rm -rf packer*"
 }
 
 // Build the AMI.
