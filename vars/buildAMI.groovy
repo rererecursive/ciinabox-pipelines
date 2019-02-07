@@ -40,9 +40,9 @@ def call(body) {
   def config = body
 
   upgradePacker()     // TODO: TEMP!
+  configurePackerTemplate(config)
   configureUserVariables(config)
   configureStackVariables(config)
-  configurePackerTemplate(config)
   configureCookbooks(config)
   configureShutdown(config)
   bake(config)
@@ -93,7 +93,6 @@ def configureUserVariables(config) {
 
 // Get the VPC configuration from the deployed stack.
 def configureStackVariables(config) {
-  deleteDir()
   withEnv(["REGION=${config.region}", "STACK=ciinabox"]) {
     println "Fetching variables from CloudFormation stack: ${env.STACK} ..."
 
@@ -132,10 +131,7 @@ def configurePackerTemplate(config) {
   }
 
   println "Cloning git repository: ${repo} with branch ${branch} ..."
-  //sh 'mkdir -p templates'
-  //dir('templates') {
-    git(branch: branch, url: repo)
-  //}
+  git(branch: branch, url: repo)
 
   //config.packerTemplate = 'templates/' + template
   config.packerTemplate = template
@@ -144,6 +140,7 @@ def configurePackerTemplate(config) {
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
 def configureCookbooks(config) {
   sh 'mkdir -p data_bags environments encrypted_data_bag_secret'
+  sh 'rm -rf cookbooks'
 
   if (config.skipCookbooks) {
     sh "mkdir -p cookbooks"
@@ -183,6 +180,7 @@ def bake(config) {
   sh "jq 'with_entries( select( .value != null and .value != \"\" ) )' temp.json > variables.json"
 
   sh "cat variables.json"
+  sh "ls -al"
 
   sh "/opt/packer/packer version"
   sh "/opt/packer/packer validate -var-file=variables.json ${config.packerTemplate}"
