@@ -29,10 +29,17 @@ buildAMI(
   sourceAMIName: 'amzn-ami-hvm-2017.03.*',
   sourceAMIOwner: env.BASE_AMI_OWNER,
   sourceBucket: 'source.tools.example.com',
-  sshUsername: env.SSH_USERNAME
+  sshUsername: env.SSH_USERNAME,
+  customTags: [
+
+  ]
 )
 
 ***********************************/
+
+// TODO: customTags
+// TODO: support custom variables
+// TODO: add tag for the OS version (platform)
 
 import groovy.json.JsonOutput
 
@@ -60,7 +67,7 @@ def configureUserVariables(config) {
     'chef_path':          config.chefPath,
     'chef_repo_branch':   env.BRANCH_NAME,
     'chef_repo_commit':   env.GIT_COMMIT.substring(0, 7),
-    'chef_run_list':      config.bakeChefRunList,
+    'chef_run_list':      config.chefRunList,
     'client':             config.client,
     'cookbook_version':   config.cookbookVersion,
     'instance_type':      config.instanceType,
