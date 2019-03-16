@@ -125,14 +125,11 @@
     },
     {
       "type": "shell-local",
-      "inline": [
-        "jq -r '.builds[] | (.artifact_id + \" \" + .name)' artifacts.json | sed 's/:/: /' | sed 's/ /\n  /g' > builds.json"
+      "script": "scripts/tag-amis.sh",
+      "environment_vars": ["SOURCE_AMI={{ .SourceAMI }}", "SOURCE_AMI_OWNER={{ user `source_ami_owner`}}"],
+      "execute_command": [
+        "bash", "-c", "{{.Vars}} {{.Script}} \"$(< artifacts.json)\""
       ]
-    },
-    {
-      "type": "shell-local",
-      "environment_vars": ["SOURCE_AMI={{ .SourceAMI }}"],
-      "script": "scripts/linux/tag-amis.sh"
     }
   ],
   "variables": {
@@ -157,7 +154,7 @@
     "role": "",
     "secret_key": "",
     "security_group": "",
-    "shutdown_timeout": "",
+    "shutdown_timeout": "120",
     "source_ami": "",
     "source_ami_owner": "",
     "source_ami_name": "",
