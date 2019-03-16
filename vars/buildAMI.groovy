@@ -8,10 +8,6 @@ buildAMI(
   client: 'base2',
   cookbookVersion: '',
   copyAMIToRegions: ['us-west-2', 'us-east-2'],
-  customVariables: [
-    'variable_1': 'value_1',
-    'variable_2': 'value_2'
-  ],
   debug: true,
   instanceType: 'm4.large',
   packerTemplate: 'amz_ebs_ami.json',   // Or below
@@ -30,16 +26,13 @@ buildAMI(
   sourceAMIName: 'amzn-ami-hvm-2017.03.*',
   sourceAMIOwner: env.BASE_AMI_OWNER,
   sourceBucket: 'source.tools.example.com',
-  sshUsername: 'ubuntu',
-  customTags: [
-
-  ]
+  sshUsername: 'ubuntu'
 )
 
 ***********************************/
 
 // TODO: customTags
-// TODO: support custom variables
+// TODO: customVariables
 // TODO: add tag for the OS version (platform)
 
 import groovy.json.JsonOutput
@@ -84,8 +77,6 @@ def configureUserVariables(config) {
 
   if (config.debug == true) {
     config.debug = '-debug'
-  } else {
-    config.debug = ''
   }
 
   if (config.bucketRegion == null) {
@@ -134,6 +125,9 @@ def configurePackerTemplate(config) {
     git(branch: branch, url: repo)
 
     config.packerTemplate = template
+  } else {
+    def template = libraryResource("packer-templates/${config.packerTemplate}")
+    writeFile(file: config.packerTemplate, text: template)
   }
 }
 
@@ -184,7 +178,7 @@ def bake(config) {
 
   sh "/opt/packer/packer version"
   sh "/opt/packer/packer validate -var-file=variables.json ${config.packerTemplate}"
-  sh "/opt/packer/packer build -machine-readable ${config.debug} -var-file=variables.json ${config.packerTemplate}"
+  sh "/opt/packer/packer build -machine-readable ${config.get('debug', '')} -var-file=variables.json ${config.packerTemplate}"
 
   println "\nProduced artifacts:\n"
   sh "cat builds.json"  // Produced by Packer
