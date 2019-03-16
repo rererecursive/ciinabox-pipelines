@@ -14,9 +14,10 @@ buildAMI(
   ],
   debug: true,
   instanceType: 'm4.large',
+  packerTemplate: 'amz_ebs_ami.json',   // Or below
   packerTemplate: [
-    name: 'packer/amz_ebs_ami.json',
-    repo: 'github.com/rererecursive/ciinabox-bakery',
+    name: 'my_template.json',
+    repo: 'github.com/my_repo/templates',
     branch: 'master'
   ],
   platform: 'windows',
@@ -25,11 +26,11 @@ buildAMI(
   shareAMIWith: ['12345678', '87654321'],
   shutdownTimeout: '60 minutes',
   skipCookbooks: true,
-  sourceAMIId: 'ami-123456789',           # Or below; specify name and owner
+  sourceAMIId: 'ami-123456789',           // Or below; specify name and owner
   sourceAMIName: 'amzn-ami-hvm-2017.03.*',
   sourceAMIOwner: env.BASE_AMI_OWNER,
   sourceBucket: 'source.tools.example.com',
-  sshUsername: env.SSH_USERNAME,
+  sshUsername: 'ubuntu',
   customTags: [
 
   ]
@@ -46,7 +47,7 @@ import groovy.json.JsonOutput
 def call(body) {
   def config = body
 
-  upgradePacker()     // TODO: TEMP!
+  upgradePacker()     // TODO: keep while ciinabox uses an old Packer version
   configurePackerTemplate(config)
   configureUserVariables(config)
   configureStackVariables(config)
@@ -124,24 +125,16 @@ EOF
 
 // Fetch the template.
 def configurePackerTemplate(config) {
-  def repo = 'https://github.com/rererecursive/packer-templates'
-  def branch = 'master'
-  def template
+  if (config.packerTemplate.getClass() == LinkedHashMap) {
+    def template = config.packerTemplate.name
+    def repo = config.packerTemplate.repo
+    def branch = config.packerTemplate.get('branch', 'master')
 
-  if (config.packerTemplate.getClass() == String) {
-    template = config.packerTemplate
+    println "Cloning git repository: ${repo} with branch ${branch} ..."
+    git(branch: branch, url: repo)
+
+    config.packerTemplate = template
   }
-  else {
-    template = config.packerTemplate.get('name')
-    repo = config.packerTemplate.get('repo', repo)
-    branch = config.packerTemplate.get('branch', branch)
-  }
-
-  println "Cloning git repository: ${repo} with branch ${branch} ..."
-  git(branch: branch, url: repo)
-
-  //config.packerTemplate = 'templates/' + template
-  config.packerTemplate = template
 }
 
 // Configure Chef cookbooks. They may be stashed from a previous pipeline step.
