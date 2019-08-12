@@ -179,11 +179,16 @@ def create(cf, config) {
   config.parameters.each {
     params << new Parameter().withParameterKey(it.key).withParameterValue(it.value)
   }
-  cf.createStack(new CreateStackRequest()
+  def request = new UpdateStackRequest()
     .withStackName(config.stackName)
     .withCapabilities('CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM')
     .withParameters(params)
-    .withTemplateURL(config.templateUrl))
+    .withTemplateURL(config.templateUrl)
+
+  if (config.tags) {
+    request.withTags(config.tags)
+  }
+  cf.createStack(request)
 }
 
 @NonCPS
@@ -214,6 +219,9 @@ def update(cf, config) {
       request.withTemplateURL(config.templateUrl)
     } else {
       request.withUsePreviousTemplate(true)
+    }
+    if(config.tags) {
+      request.withTags(config.tags)
     }
     try {
       cf.updateStack(request)
@@ -532,7 +540,7 @@ def setCfTemplateUrl(ssm, config, basePath) {
     throw new GroovyRuntimeException("Unable to load CfTemplateUrl ssm param for stack ${config.stackName} from ssm path ${basePath}")
   }
 }
- 
+
 @NonCPS
 def saveStackState(cf, config) {
   def stacks = cf.describeStacks(new DescribeStacksRequest().withStackName(config.stackName)).getStacks()
@@ -558,7 +566,7 @@ def saveStackState(cf, config) {
           .withType('String')
           .withValue(output.outputValue)
           .withOverwrite(true)
-        )        
+        )
       }
       out += "${basePath}/${output.outputKey}=${output.outputValue}\n"
     }
